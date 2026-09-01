@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#25111b"/><stop offset=".58" stop-color="#5a1530"/><stop offset="1" stop-color="#951f4a"/></linearGradient>
+    <linearGradient id="pink" x1="0" x2="1"><stop stop-color="#ff9cbd"/><stop offset="1" stop-color="#e44179"/></linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="1040" cy="80" r="230" fill="#e7447b" opacity=".09"/>
+  <circle cx="160" cy="640" r="300" fill="#d9366f" opacity=".1"/>
+  <g transform="translate(80 67)" fill="none" stroke="#ff8fb5" stroke-width="8" stroke-linecap="round">
+    <path d="M46 38C50 18 63 5 88 2M40 38C37 18 27 6 8 0"/>
+    <circle cx="25" cy="66" r="25" fill="#e84279" stroke="none"/><circle cx="67" cy="68" r="23" fill="#ba2154" stroke="none"/>
+  </g>
+  <text x="190" y="115" fill="#fff" font-family="Arial, sans-serif" font-size="40" font-weight="700">Cherry Agent-Native Finance</text>
+  <text x="80" y="245" fill="#fff" font-family="Georgia, serif" font-size="74">Close the books with an agent.</text>
+  <text x="80" y="328" fill="url(#pink)" font-family="Georgia, serif" font-size="74">Keep the controls.</text>
+  <text x="80" y="390" fill="#dbcbd2" font-family="Arial, sans-serif" font-size="25">WebMCP-powered reconciliation with explicit human approval.</text>
+  <g transform="translate(80 458)" font-family="Arial, sans-serif">
+    <rect width="220" height="70" rx="18" fill="#fff" opacity=".1"/><text x="26" y="31" fill="#ff94b8" font-size="14" font-weight="700">INSPECT</text><text x="26" y="52" fill="#fff" font-size="18">Bank feeds</text>
+    <path d="M238 35h54" stroke="#ff87ae" stroke-width="4"/><path d="m281 25 12 10-12 10" fill="none" stroke="#ff87ae" stroke-width="4"/>
+    <rect x="310" width="220" height="70" rx="18" fill="#fff" opacity=".1"/><text x="336" y="31" fill="#ff94b8" font-size="14" font-weight="700">REASON</text><text x="336" y="52" fill="#fff" font-size="18">Match invoices</text>
+    <path d="M548 35h54" stroke="#ff87ae" stroke-width="4"/><path d="m591 25 12 10-12 10" fill="none" stroke="#ff87ae" stroke-width="4"/>
+    <rect x="620" width="220" height="70" rx="18" fill="#fff" opacity=".1"/><text x="646" y="31" fill="#ff94b8" font-size="14" font-weight="700">PREPARE</text><text x="646" y="52" fill="#fff" font-size="18">Stage action</text>
+    <path d="M858 35h54" stroke="#ff87ae" stroke-width="4"/><path d="m901 25 12 10-12 10" fill="none" stroke="#ff87ae" stroke-width="4"/>
+    <rect x="930" width="190" height="70" rx="18" fill="#fff"/><text x="956" y="31" fill="#b71e52" font-size="14" font-weight="700">HUMAN ONLY</text><text x="956" y="52" fill="#25111b" font-size="18">Approve</text>
+  </g>
+  <text x="80" y="588" fill="#cdb8c1" font-family="Arial, sans-serif" font-size="18">7 narrowly scoped tools · Explainable confidence · No autonomous money movement</text>
+</svg>
