@@ -1,216 +1,311 @@
 import './styles.css';
-import { state, suggestMatch, approveReconciliation } from './store.js';
+import { INITIAL_MESSAGE, runtime, ui } from './context.js';
+import {
+  approveReconciliation,
+  createPaymentDraft,
+  exportAuditSnapshot,
+  getDashboardSummary,
+  getInvoice,
+  getReviewAnalysis,
+  getTransaction,
+  logToolInvocation,
+  resetDemo,
+  stageReconciliation,
+  subscribe,
+  suggestMatch,
+} from './store.js';
 import { registerCherryWebMCP } from './webmcp.js';
+import { escapeHtml, icon, money, toast } from './ui.js';
+import { renderFooter, renderHero, renderMetrics, renderSidebar, renderTopbar } from './shell.js';
+import { renderWorkspace } from './workspace.js';
+import { renderBottomGrid, renderToolRegistry, renderTransactionDrawer, renderTransactions } from './ledger.js';
 
-let webMcpStatus = {
-  supported: null,
-  toolCount: 0,
-  message: 'Checking browser WebMCP support…',
-};
-
-const money = (value) => new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP' }).format(value);
-const escapeHtml = (value) => String(value ?? '')
-  .replaceAll('&', '&amp;')
-  .replaceAll('<', '&lt;')
-  .replaceAll('>', '&gt;')
-  .replaceAll('"', '&quot;')
-  .replaceAll("'", '&#039;');
-
-function statusLabel(status) {
-  return {
-    needs_review: 'Needs review',
-    pending_approval: 'Pending approval',
-    matched: 'Matched',
-    ignored: 'Ignored',
-  }[status] || status;
-}
-
-function renderTransactions() {
-  return state.transactions.map((transaction) => {
-    const suggestion = transaction.status === 'needs_review' ? suggestMatch(transaction.id) : null;
-    const match = suggestion?.match
-      ? `${escapeHtml(suggestion.match.invoiceNumber)} · ${suggestion.confidence}%`
-      : suggestion
-        ? `${suggestion.confidence}% · review`
-        : '—';
-
-    return `
-      <tr>
-        <td><strong>${escapeHtml(transaction.merchant)}</strong><span>${escapeHtml(transaction.description)}</span></td>
-        <td>${escapeHtml(transaction.bookingDate)}</td>
-        <td class="amount ${transaction.direction}">${transaction.direction === 'debit' ? '−' : '+'}${money(transaction.amount)}</td>
-        <td>${match}</td>
-        <td><span class="status ${escapeHtml(transaction.status)}">${escapeHtml(statusLabel(transaction.status))}</span></td>
-      </tr>`;
-  }).join('');
-}
-
-function renderApprovals() {
-  const pending = state.approvals.filter((approval) => approval.status === 'pending');
-  if (!pending.length) {
-    return '<div class="empty-state">No staged reconciliations. Ask your agent to prepare a confident match.</div>';
-  }
-
-  return pending.map((approval) => {
-    const transaction = state.transactions.find((item) => item.id === approval.transactionId);
-    const invoice = state.invoices.find((item) => item.id === approval.invoiceId);
-    return `
-      <article class="approval-card">
-        <div>
-          <span class="eyebrow">Human decision required</span>
-          <h3>${escapeHtml(transaction?.merchant)} → ${escapeHtml(invoice?.number)}</h3>
-          <p>${money(approval.amount)} · Prepared by the agent, not yet reconciled.</p>
-        </div>
-        <button class="primary" data-approve="${escapeHtml(approval.id)}">Approve reconciliation</button>
-      </article>`;
-  }).join('');
-}
-
-function renderPaymentDrafts() {
-  if (!state.paymentDrafts.length) {
-    return '<div class="empty-state">No payment drafts. Agents may prepare drafts, but this demo exposes no payment-execution tool.</div>';
-  }
-  return state.paymentDrafts.map((draft) => `
-    <article class="draft-card">
-      <div><strong>${escapeHtml(draft.payee)}</strong><span>${escapeHtml(draft.reference || 'No reference')}</span></div>
-      <div><strong>${money(draft.amount)}</strong><span>Draft only · no money moved</span></div>
-    </article>`).join('');
-}
-
-function renderActivity() {
-  return state.activity.slice(0, 8).map((event) => `
-    <li><span>${escapeHtml(event.actor)}</span><p>${escapeHtml(event.message)}</p></li>`).join('');
-}
+const app = document.querySelector('#app');
 
 function render() {
-  const reviewCount = state.transactions.filter((item) => item.status === 'needs_review').length;
-  const matchedCount = state.transactions.filter((item) => item.status === 'matched').length;
-  const pendingCount = state.approvals.filter((item) => item.status === 'pending').length;
-  const totalBalance = state.accounts.reduce((sum, account) => sum + account.balance, 0);
-  const supportClass = webMcpStatus.supported === true ? 'ready' : webMcpStatus.supported === false ? 'unsupported' : 'checking';
-
-  document.querySelector('#app').innerHTML = `
-    <header class="topbar">
-      <a class="brand" href="#" aria-label="Cherry Money home">
-        <span class="brand-mark">C</span>
-        <span>Cherry Money</span>
-      </a>
-      <div class="header-actions">
-        <span class="webmcp-pill ${supportClass}"><i></i>${escapeHtml(webMcpStatus.message)}</span>
-        <a class="ghost-link" href="https://github.com/sohamtech-uk/cherry-webmcp" target="_blank" rel="noreferrer">Source ↗</a>
+  const summary = getDashboardSummary();
+  app.innerHTML = `
+    <div class="app-shell">
+      ${renderSidebar()}
+      <div class="main-shell">
+        ${renderTopbar()}
+        <main>
+          ${renderHero(summary)}
+          ${renderMetrics(summary)}
+          ${renderWorkspace()}
+          ${renderTransactions()}
+          ${renderBottomGrid()}
+        </main>
+        ${renderFooter()}
       </div>
-    </header>
+      ${renderTransactionDrawer()}
+      ${renderToolRegistry()}
+      <div id="toast-region" class="toast-region" aria-live="polite"></div>
+    </div>`;
 
-    <main>
-      <section class="hero">
-        <div>
-          <span class="eyebrow">OpenAI WebMCP Challenge · 2026</span>
-          <h1>Finance software designed for <em>humans and their agents.</em></h1>
-          <p>Let an agent inspect bank feeds, find invoice matches and prepare reconciliation. Keep consequential financial decisions behind explicit human approval.</p>
-        </div>
-        <div class="safety-card">
-          <span class="shield">✓</span>
-          <div>
-            <strong>Human approval boundary</strong>
-            <p>Agents can prepare. They cannot silently approve reconciliation or execute a payment.</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="metrics" aria-label="Finance summary">
-        <article><span>Total bank balance</span><strong>${money(totalBalance)}</strong><small>Across ${state.accounts.length} sandbox accounts</small></article>
-        <article><span>Needs review</span><strong>${reviewCount}</strong><small>Agent can analyse these</small></article>
-        <article><span>Matched</span><strong>${matchedCount}</strong><small>Reconciled transactions</small></article>
-        <article><span>Awaiting you</span><strong>${pendingCount}</strong><small>Explicit approval required</small></article>
-      </section>
-
-      <section class="agent-panel">
-        <div>
-          <span class="eyebrow">Try in ChatGPT's in-app browser</span>
-          <h2>Ask the page through WebMCP</h2>
-        </div>
-        <div class="prompt-grid">
-          <button data-copy="Check the bank transactions that need review and tell me which ones can be confidently matched.">“Check what needs review.”</button>
-          <button data-copy="Find the best invoice match for txn_001 and explain the confidence.">“Match txn_001.”</button>
-          <button data-copy="Prepare the confident invoice reconciliation for txn_001, but do not approve it for me.">“Prepare the match.”</button>
-          <button data-copy="Show me reconciliation exceptions that need my attention.">“Show exceptions.”</button>
-        </div>
-        <p id="copy-feedback" class="copy-feedback" aria-live="polite"></p>
-      </section>
-
-      <section class="content-card">
-        <div class="section-heading">
-          <div><span class="eyebrow">Live sandbox</span><h2>Bank transactions</h2></div>
-          <span class="hint">Representative demo data · no real customer information</span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Transaction</th><th>Date</th><th>Amount</th><th>Agent suggestion</th><th>Status</th></tr></thead>
-            <tbody>${renderTransactions()}</tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="two-column">
-        <div class="content-card">
-          <div class="section-heading"><div><span class="eyebrow">Approval queue</span><h2>Your decision</h2></div></div>
-          <div class="approval-list">${renderApprovals()}</div>
-        </div>
-        <div class="content-card">
-          <div class="section-heading"><div><span class="eyebrow">Payment safety</span><h2>Drafts only</h2></div></div>
-          <div class="draft-list">${renderPaymentDrafts()}</div>
-        </div>
-      </section>
-
-      <section class="content-card audit-card">
-        <div class="section-heading"><div><span class="eyebrow">Audit trail</span><h2>Human + agent activity</h2></div></div>
-        <ul class="activity-list">${renderActivity()}</ul>
-      </section>
-    </main>
-
-    <footer>
-      <strong>Cherry Agent-Native Finance</strong>
-      <span>WebMCP challenge build · Actions in this sandbox are illustrative and do not move real money.</span>
-    </footer>
-  `;
+  requestAnimationFrame(() => {
+    const chat = document.querySelector('#chat-window');
+    if (chat) chat.scrollTop = chat.scrollHeight;
+  });
 }
 
-document.addEventListener('click', async (event) => {
+function addUserMessage(text) {
+  ui.messages.push({ role: 'user', text, time: new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).format(new Date()), tools: [] });
+}
+
+function addAgentMessage(html, tools = []) {
+  ui.messages.push({ role: 'agent', html, time: new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).format(new Date()), tools });
+  ui.messages = ui.messages.slice(-10);
+}
+
+function analysisResponse(analysis) {
+  const confident = analysis.confident.map(({ transaction, suggestion }) => `
+    <li><span>${icon('check', 14)}</span><div><strong>${escapeHtml(transaction.id)} → ${escapeHtml(suggestion.match.invoiceNumber)}</strong><small>${escapeHtml(suggestion.match.customer)} · ${suggestion.confidence}% confidence</small></div><b>${money(transaction.amount)}</b></li>`).join('');
+  const exceptions = analysis.exceptions.map(({ transaction, suggestion }) => `
+    <li class="exception"><span>${icon('alert', 14)}</span><div><strong>${escapeHtml(transaction.id)} · ${escapeHtml(transaction.merchant)}</strong><small>${escapeHtml(suggestion.reason)}</small></div><b>${suggestion.confidence}%</b></li>`).join('');
+
+  return `
+    <p><strong>I reviewed the unresolved bank feed against outstanding invoices.</strong></p>
+    <div class="agent-summary"><div><span>Confident</span><strong>${analysis.confident.length}</strong></div><div><span>Exceptions</span><strong>${analysis.exceptions.length}</strong></div><div><span>Auto-approved</span><strong>0</strong></div></div>
+    ${confident ? `<h4>Ready to prepare</h4><ul class="agent-result-list">${confident}</ul>` : ''}
+    ${exceptions ? `<h4>Needs human judgement</h4><ul class="agent-result-list">${exceptions}</ul>` : ''}
+    <p class="agent-conclusion">I can stage a confident match, but I will not complete it without your approval.</p>`;
+}
+
+async function runCommand(command, customPrompt = '') {
+  if (ui.agentBusy) return;
+  const promptText = customPrompt || {
+    guided: 'Run the guided reconciliation demo and show me the safety boundary.',
+    review: 'Check what needs review and explain the confident matches.',
+    prepare: 'Prepare txn_001 against its best invoice match, but do not approve it.',
+    exceptions: 'Show me the reconciliation exceptions and explain why they need me.',
+    payment: 'Prepare a £1,240 HMRC VAT payment draft with reference VAT Q2. Do not send it.',
+  }[command] || 'Review the finance workspace.';
+
+  addUserMessage(promptText);
+  ui.agentBusy = true;
+  render();
+  await new Promise((resolve) => setTimeout(resolve, command === 'guided' ? 850 : 520));
+
+  try {
+    if (command === 'guided' || command === 'review') {
+      const analysis = getReviewAnalysis();
+      logToolInvocation('cherry_get_transactions', { status: 'review', limit: 25 }, `Returned ${analysis.confident.length + analysis.exceptions.length} unresolved transactions.`);
+      logToolInvocation('cherry_suggest_reconciliation', { batch: true }, `Found ${analysis.confident.length} confident matches and ${analysis.exceptions.length} exceptions.`);
+      addAgentMessage(analysisResponse(analysis), ['cherry_get_transactions', 'cherry_search_invoices', 'cherry_suggest_reconciliation']);
+
+      if (command === 'guided') {
+        const current = getTransaction('txn_001');
+        if (current?.status === 'needs_review') {
+          const suggestion = suggestMatch('txn_001');
+          const approval = stageReconciliation('txn_001', suggestion.match.invoiceId);
+          logToolInvocation('cherry_stage_reconciliation', { transaction_id: 'txn_001', invoice_id: suggestion.match.invoiceId }, 'Staged a pending reconciliation; human approval required.');
+          addAgentMessage(`
+            <p><strong>I prepared the safest next action.</strong></p>
+            <div class="staged-result">${icon('shield', 18)}<div><span>${escapeHtml(approval.transactionId)} → ${escapeHtml(getInvoice(approval.invoiceId).number)}</span><strong>${money(approval.amount)}</strong><small>Pending approval · no final reconciliation yet</small></div></div>
+            <p>Look at the approval queue: only you can complete this decision.</p>`, ['cherry_stage_reconciliation']);
+        } else {
+          addAgentMessage('<p>The demonstration match has already been staged or approved. Use <strong>Reset demo</strong> to replay the full journey.</p>', []);
+        }
+      }
+    } else if (command === 'prepare') {
+      const transaction = getTransaction('txn_001');
+      if (transaction.status === 'matched') {
+        addAgentMessage('<p><strong>txn_001 is already reconciled.</strong> I did not create a duplicate action. Reset the sandbox to replay it.</p>', ['cherry_suggest_reconciliation']);
+      } else {
+        const suggestion = suggestMatch('txn_001');
+        logToolInvocation('cherry_suggest_reconciliation', { transaction_id: 'txn_001' }, `${suggestion.confidence}% confidence; ready=${suggestion.ready}.`);
+        const approval = stageReconciliation('txn_001', suggestion.match.invoiceId);
+        logToolInvocation('cherry_stage_reconciliation', { transaction_id: 'txn_001', invoice_id: suggestion.match.invoiceId }, 'Reconciliation staged; human approval required.');
+        addAgentMessage(`
+          <p><strong>Prepared—not approved.</strong></p>
+          <div class="staged-result">${icon('shield', 18)}<div><span>txn_001 → ${escapeHtml(getInvoice(approval.invoiceId).number)}</span><strong>${money(approval.amount)}</strong><small>${suggestion.confidence}% confidence · awaiting the human controller</small></div></div>
+          <p>I cannot press the approval button. That capability is intentionally absent from the agent contract.</p>`, ['cherry_suggest_reconciliation', 'cherry_stage_reconciliation']);
+      }
+    } else if (command === 'exceptions') {
+      const analysis = getReviewAnalysis();
+      logToolInvocation('cherry_get_exceptions', {}, `${analysis.exceptions.length} exceptions and ${analysis.pendingApprovals.length} pending approvals.`);
+      const ambiguous = analysis.exceptions.find(({ suggestion }) => suggestion.ambiguous);
+      addAgentMessage(`
+        <p><strong>${analysis.exceptions.length} items need human judgement.</strong></p>
+        <ul class="agent-result-list">${analysis.exceptions.map(({ transaction, suggestion }) => `<li class="exception"><span>${icon('alert', 14)}</span><div><strong>${escapeHtml(transaction.id)} · ${escapeHtml(transaction.merchant)}</strong><small>${escapeHtml(suggestion.reason)}</small></div><b>${suggestion.confidence}%</b></li>`).join('')}</ul>
+        ${ambiguous ? `<div class="message-callout amber"><span>Why I stopped</span> ${escapeHtml(ambiguous.transaction.id)} matches ${ambiguous.suggestion.candidates.length} unpaid invoices for ${money(ambiguous.transaction.amount)}. Choosing one would be guessing.</div>` : ''}`, ['cherry_get_exceptions', 'cherry_suggest_reconciliation']);
+      if (ambiguous) ui.selectedTransactionId = ambiguous.transaction.id;
+    } else if (command === 'payment') {
+      const draft = createPaymentDraft({ payee: 'HMRC VAT', amount: 1240, reference: 'VAT Q2', purpose: 'Quarterly VAT payment' });
+      logToolInvocation('cherry_create_payment_draft', { payee: draft.payee, amount: draft.amount, reference: draft.reference }, 'Payment draft created; no money moved.');
+      addAgentMessage(`
+        <p><strong>Payment draft created with the safety boundary intact.</strong></p>
+        <div class="staged-result payment">${icon('card', 18)}<div><span>${escapeHtml(draft.payee)} · ${escapeHtml(draft.reference)}</span><strong>${money(draft.amount)}</strong><small>Draft only · moneyMoved: false</small></div></div>
+        <p>There is no WebMCP tool that can authorise or execute this payment.</p>`, ['cherry_create_payment_draft']);
+    }
+  } catch (error) {
+    addAgentMessage(`<p><strong>I stopped safely.</strong></p><p>${escapeHtml(error.message)}</p>`, []);
+    toast(error.message, 'error');
+  } finally {
+    ui.agentBusy = false;
+    render();
+  }
+}
+
+function exportAudit() {
+  const snapshot = exportAuditSnapshot();
+  const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `cherry-human-agent-audit-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  toast('Audit trail exported as JSON.');
+}
+
+app.addEventListener('click', async (event) => {
+  const commandButton = event.target.closest('[data-command]');
+  if (commandButton) {
+    await runCommand(commandButton.dataset.command);
+    return;
+  }
+
+  const actionButton = event.target.closest('[data-action]');
+  if (actionButton) {
+    const action = actionButton.dataset.action;
+    if (action === 'toggle-nav') {
+      ui.mobileNavOpen = !ui.mobileNavOpen;
+      render();
+    } else if (action === 'show-tools') {
+      ui.showToolRegistry = true;
+      render();
+    } else if (action === 'close-tools') {
+      ui.showToolRegistry = false;
+      render();
+    } else if (action === 'close-drawer') {
+      ui.selectedTransactionId = null;
+      render();
+    } else if (action === 'reset-demo') {
+      resetDemo();
+      ui.messages = [INITIAL_MESSAGE];
+      ui.selectedTransactionId = null;
+      render();
+      toast('Sandbox reset. The full demo is ready to replay.');
+    } else if (action === 'export-audit') {
+      exportAudit();
+    }
+    return;
+  }
+
+  const scrollButton = event.target.closest('[data-scroll]');
+  if (scrollButton) {
+    const targetId = scrollButton.dataset.scroll;
+    ui.mobileNavOpen = false;
+    render();
+    requestAnimationFrame(() => {
+      document.querySelector(`#${CSS.escape(targetId)}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    return;
+  }
+
+  const filterButton = event.target.closest('[data-filter]');
+  if (filterButton) {
+    ui.filter = filterButton.dataset.filter;
+    render();
+    return;
+  }
+
+  const row = event.target.closest('[data-open-transaction]');
+  if (row) {
+    ui.selectedTransactionId = row.dataset.openTransaction;
+    render();
+    return;
+  }
+
+  const stageButton = event.target.closest('[data-stage-transaction]');
+  if (stageButton) {
+    try {
+      stageReconciliation(stageButton.dataset.stageTransaction, stageButton.dataset.stageInvoice);
+      logToolInvocation('cherry_stage_reconciliation', { transaction_id: stageButton.dataset.stageTransaction, invoice_id: stageButton.dataset.stageInvoice }, 'Reconciliation staged from evidence drawer; human approval required.');
+      render();
+      toast('Match staged. It is waiting for human approval.');
+    } catch (error) {
+      toast(error.message, 'error');
+    }
+    return;
+  }
+
   const approveButton = event.target.closest('[data-approve]');
   if (approveButton) {
     try {
       approveReconciliation(approveButton.dataset.approve);
       render();
+      toast('Reconciliation approved by the human controller.');
     } catch (error) {
-      window.alert(error.message);
+      toast(error.message, 'error');
     }
-    return;
   }
+});
 
-  const copyButton = event.target.closest('[data-copy]');
-  if (copyButton) {
-    const text = copyButton.dataset.copy;
-    try {
-      await navigator.clipboard.writeText(text);
-      const feedback = document.querySelector('#copy-feedback');
-      if (feedback) feedback.textContent = `Copied: ${text}`;
-    } catch {
-      const feedback = document.querySelector('#copy-feedback');
-      if (feedback) feedback.textContent = text;
-    }
+app.addEventListener('keydown', (event) => {
+  const row = event.target.closest('[data-open-transaction]');
+  if (row && (event.key === 'Enter' || event.key === ' ')) {
+    event.preventDefault();
+    ui.selectedTransactionId = row.dataset.openTransaction;
+    render();
   }
+  if (event.key === 'Escape') {
+    if (ui.showToolRegistry) ui.showToolRegistry = false;
+    else if (ui.selectedTransactionId) ui.selectedTransactionId = null;
+    else if (ui.mobileNavOpen) ui.mobileNavOpen = false;
+    render();
+  }
+});
+
+app.addEventListener('input', (event) => {
+  if (!event.target.matches('[data-search-transactions]')) return;
+  const cursor = event.target.selectionStart;
+  ui.search = event.target.value;
+  render();
+  requestAnimationFrame(() => {
+    const replacement = document.querySelector('[data-search-transactions]');
+    if (replacement) {
+      replacement.focus();
+      replacement.setSelectionRange(cursor, cursor);
+    }
+  });
+});
+
+app.addEventListener('submit', async (event) => {
+  if (event.target.id !== 'agent-form') return;
+  event.preventDefault();
+  const input = event.target.elements.prompt;
+  const prompt = input.value.trim();
+  if (!prompt) return;
+  input.value = '';
+  const lower = prompt.toLowerCase();
+  const command = /payment|hmrc|draft/.test(lower)
+    ? 'payment'
+    : /exception|ambiguous|uncertain|attention/.test(lower)
+      ? 'exceptions'
+      : /prepare|stage|txn_001|reconcile/.test(lower)
+        ? 'prepare'
+        : 'review';
+  await runCommand(command, prompt);
+});
+
+subscribe(() => {
+  // WebMCP calls can mutate state outside normal DOM events.
 });
 
 render();
 
 try {
-  webMcpStatus = await registerCherryWebMCP({ onChange: render });
+  runtime.webMcpStatus = await registerCherryWebMCP({ onChange: render });
 } catch (error) {
-  webMcpStatus = {
+  runtime.webMcpStatus = {
     supported: false,
     toolCount: 0,
-    message: `WebMCP registration failed: ${error.message}`,
+    message: `WebMCP registration failed safely: ${error.message}`,
   };
 }
-
 render();
