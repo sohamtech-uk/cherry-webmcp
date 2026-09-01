@@ -71,7 +71,10 @@ async function request(path, options = {}) {
     payload = null;
   }
 
-  if (response.status === 401) clearLiveSession();
+  if (response.status === 401) {
+    clearLiveSession();
+    window.dispatchEvent(new CustomEvent('cherry-live-session-expired'));
+  }
 
   if (!response.ok) {
     const validation = payload?.errors

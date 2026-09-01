@@ -125,8 +125,8 @@ async function connectLive(email, password) {
   runtime.live.error = null;
   render();
   try {
-    setStatePersistence(false);
     await loginToCherryMoney(email, password);
+    setStatePersistence(false);
     const payload = await refreshLive();
     ui.messages = [INITIAL_MESSAGE];
     ui.showLiveLogin = false;
@@ -180,17 +180,13 @@ function formatLiveReply(reply, meta = {}) {
 }
 
 async function runLiveCommand(command, promptText) {
-  if (runtime.live.connected) {
-    await runLiveCommand(command, promptText);
-    return;
-  }
-
+  const history = messageHistory();
   addUserMessage(promptText);
   ui.agentBusy = true;
   render();
 
   try {
-    const ai = await askLiveCherry(promptText, messageHistory());
+    const ai = await askLiveCherry(promptText, history);
     addAgentMessage(formatLiveReply(ai.reply, ai.meta || {}), ['cherry_production_context', ai.meta?.provider === 'openai' ? 'openai' : 'cherry_rules']);
 
     if (command === 'prepare') {
@@ -249,6 +245,11 @@ async function runCommand(command, customPrompt = '') {
     exceptions: 'Show me the reconciliation exceptions and explain why they need me.',
     payment: 'Prepare a £1,240 HMRC VAT payment draft with reference VAT Q2. Do not send it.',
   }[command] || 'Review the finance workspace.';
+
+  if (runtime.live.connected) {
+    await runLiveCommand(command, promptText);
+    return;
+  }
 
   addUserMessage(promptText);
   ui.agentBusy = true;
@@ -606,6 +607,12 @@ window.addEventListener('hashchange', () => {
 
 subscribe(() => {
   // WebMCP calls can mutate state outside normal DOM events.
+});
+
+window.addEventListener('cherry-live-session-expired', async () => {
+  if (runtime.live.connected || runtime.live.loading) {
+    await disconnectLive({ notifyBackend: false });
+  }
 });
 
 render();

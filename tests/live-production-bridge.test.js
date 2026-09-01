@@ -53,3 +53,19 @@ test('Vercel policy permits only the private Cherry API origins in addition to s
 
   assert.match(vercel, /connect-src 'self' https:\/\/cherrybank\.money https:\/\/www\.cherrybank\.money;/);
 });
+
+test('live command routing is non-recursive and does not duplicate the current prompt in history', () => {
+  const main = read('src/main.js');
+  const liveStart = main.indexOf('async function runLiveCommand');
+  const liveEnd = main.indexOf('function analysisResponse', liveStart);
+  const dispatcherStart = main.indexOf('async function runCommand');
+  const dispatcherEnd = main.indexOf('function downloadJson', dispatcherStart);
+  const liveCommand = main.slice(liveStart, liveEnd);
+  const dispatcher = main.slice(dispatcherStart, dispatcherEnd);
+
+  assert.doesNotMatch(liveCommand, /await runLiveCommand\(command, promptText\)/);
+  assert.match(liveCommand, /const history = messageHistory\(\);[\s\S]*addUserMessage\(promptText\)/);
+  assert.match(liveCommand, /askLiveCherry\(promptText, history\)/);
+  assert.match(dispatcher, /if \(runtime\.live\.connected\)[\s\S]*await runLiveCommand\(command, promptText\)/);
+});
+
