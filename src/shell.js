@@ -34,7 +34,7 @@ export function renderSidebar() {
 
       <div class="workspace-switcher">
         <span class="workspace-avatar">CL</span>
-        <span><strong>Cherry Labs Ltd</strong><small>Sandbox workspace</small></span>
+        <span><strong>${escapeHtml(runtime.live.connected ? (runtime.live.company?.name || 'Cherry Money') : 'Cherry Labs Ltd')}</strong><small>${runtime.live.connected ? 'Authenticated production workspace' : 'Representative sandbox workspace'}</small></span>
         ${icon('chevron', 16)}
       </div>
 
@@ -83,6 +83,9 @@ export function renderTopbar() {
         <div class="breadcrumb"><span>Cherry Money</span>${icon('chevron', 14)}<strong>${escapeHtml(currentLabel)}</strong></div>
       </div>
       <div class="topbar-actions">
+        <button class="live-backend-status ${runtime.live.connected ? 'connected' : runtime.live.loading ? 'loading' : ''}" data-action="${runtime.live.connected ? 'disconnect-live' : 'connect-live'}" title="${runtime.live.connected ? 'Disconnect this tab from Cherry Money production' : 'Connect an authenticated Cherry Money account'}">
+          <i></i><span>${escapeHtml(runtime.live.connected ? (runtime.live.company?.name || 'Production connected') : runtime.live.loading ? 'Connecting…' : 'Connect Cherry Money')}</span>
+        </button>
         <button class="webmcp-status ${statusClass}" data-action="show-tools" title="${escapeHtml(runtime.webMcpStatus.message)}">
           <i></i><span>${escapeHtml(statusTitle)}</span>${icon('chevron', 14)}
         </button>
@@ -107,7 +110,7 @@ export function renderMetrics(summary) {
   return `
     <section class="metric-grid" aria-label="Finance overview">
       <article class="metric-card balance-card">
-        <div class="metric-head"><span class="metric-icon rose">${icon('bank', 18)}</span><span>Available cash</span><small>Live sandbox</small></div>
+        <div class="metric-head"><span class="metric-icon rose">${icon('bank', 18)}</span><span>Available cash</span><small>${runtime.live.connected ? 'Production' : 'Live sandbox'}</small></div>
         <strong>${money(summary.availableBalance)}</strong>
         <div class="metric-foot"><span class="positive">+8.4%</span><span>vs. last 7 days</span></div>
         ${sparkline()}

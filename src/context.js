@@ -4,6 +4,17 @@ export const runtime = {
     toolCount: 0,
     message: 'Checking this browser for WebMCP…',
   },
+  live: {
+    connected: false,
+    loading: false,
+    company: null,
+    user: null,
+    model: null,
+    openaiConfigured: false,
+    openaiProvider: null,
+    capabilities: {},
+    error: null,
+  },
 };
 
 export const INITIAL_MESSAGE = {
@@ -25,6 +36,7 @@ export const ui = {
   selectedTransactionId: null,
   selectedInvoiceId: null,
   showToolRegistry: false,
+  showLiveLogin: false,
   mobileNavOpen: false,
   agentBusy: false,
   bankSyncAt: new Date().toISOString(),

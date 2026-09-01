@@ -9,6 +9,8 @@ import {
   getInvoice,
   getReviewAnalysis,
   getTransaction,
+  hydrateLiveState,
+  setStatePersistence,
   logActivity,
   logToolInvocation,
   resetDemo,
@@ -22,6 +24,20 @@ import { renderFooter, renderHero, renderMetrics, renderSidebar, renderTopbar } 
 import { renderWorkspace } from './workspace.js';
 import { renderBottomGrid, renderToolRegistry, renderTransactionDrawer, renderTransactions } from './ledger.js';
 import { renderInvoiceDrawer, renderProductSuite } from './product.js';
+import {
+  askLiveCherry,
+  approveLiveReconciliation,
+  clearLiveSession,
+  createLivePaymentDraft,
+  getSavedProfile,
+  hasLiveSession,
+  liveBootstrap,
+  loginToCherryMoney,
+  logoutLiveSession,
+  stageLiveReconciliation,
+  suggestLiveReconciliation,
+} from './live-api.js';
+import { renderLiveConnectionModal } from './live-ui.js';
 
 const app = document.querySelector('#app');
 const sectionIds = new Set([
@@ -58,6 +74,7 @@ function render() {
       ${renderTransactionDrawer()}
       ${renderInvoiceDrawer()}
       ${renderToolRegistry()}
+      ${renderLiveConnectionModal()}
       <div id="toast-region" class="toast-region" aria-live="polite"></div>
     </div>`;
 
@@ -74,6 +91,139 @@ function addUserMessage(text) {
 function addAgentMessage(html, tools = []) {
   ui.messages.push({ role: 'agent', html, time: new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit' }).format(new Date()), tools });
   ui.messages = ui.messages.slice(-10);
+}
+
+function messageHistory() {
+  return ui.messages.slice(-8).map((message) => {
+    if (!message.html) return { role: message.role === 'agent' ? 'assistant' : 'user', content: message.text || '' };
+    const holder = document.createElement('div');
+    holder.innerHTML = message.html;
+    return { role: message.role === 'agent' ? 'assistant' : 'user', content: holder.textContent.trim().slice(0, 2000) };
+  }).filter((item) => item.content);
+}
+
+function applyLivePayload(payload) {
+  hydrateLiveState(payload);
+  runtime.live.connected = true;
+  runtime.live.loading = false;
+  runtime.live.company = payload.company || null;
+  runtime.live.user = payload.user || getSavedProfile();
+  runtime.live.model = payload.openai?.model || null;
+  runtime.live.openaiConfigured = Boolean(payload.openai?.configured);
+  runtime.live.capabilities = payload.capabilities || {};
+  runtime.live.error = null;
+}
+
+async function refreshLive() {
+  const payload = await liveBootstrap();
+  applyLivePayload(payload);
+  return payload;
+}
+
+async function connectLive(email, password) {
+  runtime.live.loading = true;
+  runtime.live.error = null;
+  render();
+  try {
+    setStatePersistence(false);
+    await loginToCherryMoney(email, password);
+    const payload = await refreshLive();
+    ui.messages = [INITIAL_MESSAGE];
+    ui.showLiveLogin = false;
+    ui.activeSection = 'tools';
+    window.history.replaceState(null, '', '#tools');
+    render();
+    toast(`Connected to ${payload.company?.name || 'Cherry Money production'}.`);
+  } catch (error) {
+    runtime.live.loading = false;
+    runtime.live.connected = false;
+    runtime.live.error = error.message;
+    clearLiveSession();
+    setStatePersistence(true);
+    resetDemo({ record: false });
+    render();
+  }
+}
+
+async function disconnectLive({ notifyBackend = true } = {}) {
+  try {
+    if (notifyBackend) await logoutLiveSession();
+    else clearLiveSession();
+  } catch {
+    clearLiveSession();
+  }
+  runtime.live = {
+    connected: false,
+    loading: false,
+    company: null,
+    user: null,
+    model: null,
+    openaiConfigured: false,
+    openaiProvider: null,
+    capabilities: {},
+    error: null,
+  };
+  setStatePersistence(true);
+  resetDemo({ record: false });
+  ui.messages = [INITIAL_MESSAGE];
+  toast('Disconnected from production. Representative sandbox restored.');
+  render();
+}
+
+function formatLiveReply(reply, meta = {}) {
+  const body = escapeHtml(String(reply || 'Ask Cherry did not return a response.')).replaceAll('\n', '<br>');
+  const isOpenAI = meta.provider === 'openai';
+  const provider = isOpenAI ? 'OpenAI API response verified' : 'Cherry deterministic finance rules';
+  runtime.live.openaiProvider = meta.provider || runtime.live.openaiProvider;
+  if (meta.model) runtime.live.model = meta.model;
+  return `<p>${body}</p><span class="live-ai-proof">${icon('check', 14)} ${escapeHtml(provider)} · authenticated Cherry Money production${meta.model ? ` · ${escapeHtml(meta.model)}` : ''}</span>`;
+}
+
+async function runLiveCommand(command, promptText) {
+  if (runtime.live.connected) {
+    await runLiveCommand(command, promptText);
+    return;
+  }
+
+  addUserMessage(promptText);
+  ui.agentBusy = true;
+  render();
+
+  try {
+    const ai = await askLiveCherry(promptText, messageHistory());
+    addAgentMessage(formatLiveReply(ai.reply, ai.meta || {}), ['cherry_production_context', ai.meta?.provider === 'openai' ? 'openai' : 'cherry_rules']);
+
+    if (command === 'prepare') {
+      const analysis = getReviewAnalysis();
+      const best = analysis.confident[0];
+      if (!best) {
+        addAgentMessage('<p>No high-confidence production match is currently safe to stage.</p>', []);
+      } else {
+        const liveSuggestion = await suggestLiveReconciliation(best.transaction.id);
+        const invoiceId = liveSuggestion.suggestion?.match?.invoiceId;
+        if (!invoiceId) throw new Error('Cherry Money did not return a valid invoice match.');
+        await stageLiveReconciliation(best.transaction.id, invoiceId);
+        await refreshLive();
+        addAgentMessage(`<p><strong>Prepared—not approved.</strong></p><div class="staged-result">${icon('shield', 18)}<div><span>${escapeHtml(best.transaction.id)} → ${escapeHtml(liveSuggestion.suggestion.match.invoiceNumber)}</span><strong>${money(best.transaction.amount)}</strong><small>Persisted in Cherry Money production · human approval required</small></div></div>`, ['cherry_stage_reconciliation']);
+      }
+    } else if (command === 'payment') {
+      const result = await createLivePaymentDraft({ payee: 'HMRC VAT', amount: 1240, reference: 'VAT Q2', purpose: 'Quarterly VAT payment' });
+      await refreshLive();
+      addAgentMessage(`<p><strong>Production payment draft created.</strong></p><div class="staged-result payment">${icon('card', 18)}<div><span>${escapeHtml(result.draft.payee)} · ${escapeHtml(result.draft.reference)}</span><strong>${money(result.draft.amount)}</strong><small>Draft only · moneyMoved: false</small></div></div>`, ['cherry_create_payment_draft']);
+    } else {
+      await refreshLive();
+    }
+  } catch (error) {
+    if (error.status === 401) await disconnectLive({ notifyBackend: false });
+    else {
+      addAgentMessage(`<p><strong>The production request stopped safely.</strong></p><p>${escapeHtml(error.message)}</p>`, []);
+      runtime.live.error = error.message;
+      toast(error.message, 'error');
+    }
+  } finally {
+    ui.agentBusy = false;
+    render();
+  }
 }
 
 function analysisResponse(analysis) {
@@ -222,7 +372,17 @@ app.addEventListener('click', async (event) => {
   const actionButton = event.target.closest('[data-action]');
   if (actionButton) {
     const action = actionButton.dataset.action;
-    if (action === 'toggle-nav') {
+    if (action === 'connect-live') {
+      runtime.live.error = null;
+      ui.showLiveLogin = true;
+      render();
+    } else if (action === 'close-live-login') {
+      ui.showLiveLogin = false;
+      runtime.live.error = null;
+      render();
+    } else if (action === 'disconnect-live') {
+      await disconnectLive();
+    } else if (action === 'toggle-nav') {
       ui.mobileNavOpen = !ui.mobileNavOpen;
       render();
     } else if (action === 'show-tools') {
@@ -238,6 +398,13 @@ app.addEventListener('click', async (event) => {
       ui.selectedInvoiceId = null;
       render();
     } else if (action === 'reset-demo') {
+      if (runtime.live.connected) {
+        await refreshLive();
+        ui.messages = [INITIAL_MESSAGE];
+        render();
+        toast('Production data reloaded. No production record was reset.');
+        return;
+      }
       resetDemo();
       ui.messages = [INITIAL_MESSAGE];
       ui.selectedTransactionId = null;
@@ -252,6 +419,12 @@ app.addEventListener('click', async (event) => {
     } else if (action === 'export-report') {
       exportFinanceReport();
     } else if (action === 'refresh-connections') {
+      if (runtime.live.connected) {
+        await refreshLive();
+        render();
+        toast('Reloaded bank connection status from Cherry Money production.');
+        return;
+      }
       ui.bankSyncAt = new Date().toISOString();
       logActivity('Human', 'Refreshed the sandbox bank feed status.', 'sync');
       render();
@@ -307,7 +480,12 @@ app.addEventListener('click', async (event) => {
   const stageButton = event.target.closest('[data-stage-transaction]');
   if (stageButton) {
     try {
-      stageReconciliation(stageButton.dataset.stageTransaction, stageButton.dataset.stageInvoice);
+      if (runtime.live.connected) {
+        await stageLiveReconciliation(stageButton.dataset.stageTransaction, stageButton.dataset.stageInvoice);
+        await refreshLive();
+      } else {
+        stageReconciliation(stageButton.dataset.stageTransaction, stageButton.dataset.stageInvoice);
+      }
       logToolInvocation('cherry_stage_reconciliation', { transaction_id: stageButton.dataset.stageTransaction, invoice_id: stageButton.dataset.stageInvoice }, 'Reconciliation staged from evidence drawer; human approval required.');
       render();
       toast('Match staged. It is waiting for human approval.');
@@ -320,9 +498,17 @@ app.addEventListener('click', async (event) => {
   const approveButton = event.target.closest('[data-approve]');
   if (approveButton) {
     try {
-      approveReconciliation(approveButton.dataset.approve);
+      if (runtime.live.connected) {
+        if (!runtime.live.capabilities?.humanApproveReconciliation) {
+          throw new Error('Your Cherry Money role cannot approve reconciliations.');
+        }
+        await approveLiveReconciliation(approveButton.dataset.approve);
+        await refreshLive();
+      } else {
+        approveReconciliation(approveButton.dataset.approve);
+      }
       render();
-      toast('Reconciliation approved by the human controller.');
+      toast('Reconciliation approved by the authenticated human controller.');
     } catch (error) {
       toast(error.message, 'error');
     }
@@ -385,6 +571,12 @@ app.addEventListener('input', (event) => {
 });
 
 app.addEventListener('submit', async (event) => {
+  if (event.target.id === 'live-login-form') {
+    event.preventDefault();
+    const data = new FormData(event.target);
+    await connectLive(String(data.get('email') || '').trim(), String(data.get('password') || ''));
+    return;
+  }
   if (event.target.id !== 'agent-form') return;
   event.preventDefault();
   const input = event.target.elements.prompt;
@@ -417,6 +609,21 @@ subscribe(() => {
 });
 
 render();
+
+if (hasLiveSession()) {
+  runtime.live.loading = true;
+  setStatePersistence(false);
+  render();
+  try {
+    await refreshLive();
+  } catch (error) {
+    clearLiveSession();
+    runtime.live.loading = false;
+    runtime.live.error = error.message;
+    setStatePersistence(true);
+    resetDemo({ record: false });
+  }
+}
 
 try {
   runtime.webMcpStatus = await registerCherryWebMCP({ onChange: render });

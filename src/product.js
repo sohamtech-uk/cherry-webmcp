@@ -1,4 +1,4 @@
-import { ui } from './context.js';
+import { ui, runtime } from './context.js';
 import {
   state,
   getDashboardSummary,
@@ -103,7 +103,7 @@ export function renderInvoicesProduct() {
           <tbody>${renderInvoiceRows()}</tbody>
         </table>
       </div>
-      <div class="product-footer"><span>${icon('lock', 15)} Representative invoice data only</span><span>Click any invoice to inspect its matching evidence</span></div>
+      <div class="product-footer"><span>${icon('lock', 15)} ${runtime.live.connected ? 'Authenticated Cherry Money production data' : 'Representative invoice data only'}</span><span>Click any invoice to inspect its matching evidence</span></div>
     </section>`;
 }
 
@@ -221,7 +221,7 @@ export function renderReportsProduct() {
       </div>
 
       <div class="report-highlight-grid">
-        <article><span>Available cash</span><strong>${money(summary.availableBalance)}</strong><small>Across ${state.accounts.length} connected sandbox accounts</small></article>
+        <article><span>Available cash</span><strong>${money(summary.availableBalance)}</strong><small>Across ${state.accounts.length} connected ${runtime.live.connected ? 'production' : 'sandbox'} accounts</small></article>
         <article><span>Invoice exposure</span><strong>${money(outstanding)}</strong><small>${money(overdue)} is overdue</small></article>
         <article><span>Agent readiness</span><strong>${readiness}%</strong><small>${summary.confidentCount} of ${summary.reviewCount} unresolved items are safe to prepare</small></article>
       </div>
@@ -260,7 +260,7 @@ export function renderProductSuite() {
     <section class="product-suite-intro">
       <span class="eyebrow">Connected product surface</span>
       <h2>The Cherry Money links now open real, shared-state workflows.</h2>
-      <p>Invoices, payments, bank connections and reports all use the same representative finance state as the WebMCP tools.</p>
+      <p>${runtime.live.connected ? 'Invoices, payments, bank connections and reports are hydrated from the authenticated Cherry Money backend and share that state with the WebMCP tools.' : 'Invoices, payments, bank connections and reports all use the same representative finance state as the WebMCP tools.'}</p>
     </section>
     ${renderInvoicesProduct()}
     ${renderPaymentsProduct()}

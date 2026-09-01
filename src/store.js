@@ -12,6 +12,7 @@ const isoDay = (offset = 0) => {
 function createSeedState() {
   return {
     schemaVersion: SCHEMA_VERSION,
+    source: 'representative-sandbox',
     accounts: [
       {
         id: 'acc_business',
@@ -78,6 +79,12 @@ function readPersistedState() {
   if (typeof localStorage === 'undefined') return null;
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+    const containsProductionData = parsed?.source === 'cherry-money-production'
+      || parsed?.transactions?.some((transaction) => transaction?.source === 'cherry-money-production');
+    if (containsProductionData) {
+      localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
     return parsed?.schemaVersion === SCHEMA_VERSION ? parsed : null;
   } catch {
     return null;
@@ -86,9 +93,10 @@ function readPersistedState() {
 
 export const state = readPersistedState() || createSeedState();
 const listeners = new Set();
+let persistenceEnabled = true;
 
 function persist() {
-  if (typeof localStorage === 'undefined') return;
+  if (!persistenceEnabled || state.source === 'cherry-money-production' || typeof localStorage === 'undefined') return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
@@ -101,12 +109,24 @@ function notify() {
   for (const listener of listeners) listener(state);
 }
 
+export function setStatePersistence(enabled) {
+  persistenceEnabled = Boolean(enabled);
+  if (!persistenceEnabled && typeof localStorage !== 'undefined') {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {
+      // Storage may be unavailable in embedded/private browser contexts.
+    }
+  }
+}
+
 export function subscribe(listener) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
 export function resetDemo({ record = true } = {}) {
+  persistenceEnabled = true;
   const fresh = createSeedState();
   for (const key of Object.keys(state)) delete state[key];
   Object.assign(state, fresh);
@@ -131,6 +151,8 @@ export function getInvoice(id) {
 export function suggestMatch(transactionId) {
   const transaction = getTransaction(transactionId);
   if (!transaction) throw new Error('Bank transaction not found.');
+
+  if (transaction.backendSuggestion) return clone(transaction.backendSuggestion);
 
   if (transaction.direction !== 'credit') {
     const category = /aws|google|microsoft|software|hosting/i.test(`${transaction.description} ${transaction.merchant}`)
@@ -351,10 +373,70 @@ export function getDashboardSummary() {
   };
 }
 
+export function hydrateLiveState(payload) {
+  if (!payload || payload.source !== 'cherry-money-production') {
+    throw new Error('Cherry Money returned an invalid live workspace payload.');
+  }
+
+  setStatePersistence(false);
+  state.schemaVersion = SCHEMA_VERSION;
+  state.source = 'cherry-money-production';
+  state.accounts = Array.isArray(payload.accounts) ? payload.accounts.map((account) => ({
+    id: String(account.id),
+    name: String(account.name || 'Connected bank account'),
+    sortCodeMasked: account.sortCodeMasked || 'Production connection',
+    currency: account.currency || payload.company?.currency || 'GBP',
+    balance: account.balance == null ? 0 : Number(account.balance),
+    available: account.available == null ? (account.balance == null ? 0 : Number(account.balance)) : Number(account.available),
+    balanceUnavailable: account.balance == null,
+    provider: account.provider || 'Cherry Money production',
+    status: account.status || 'connected',
+    lastSyncedAt: account.lastSyncedAt || null,
+  })) : [];
+
+  state.invoices = Array.isArray(payload.invoices) ? payload.invoices.map((invoice) => ({
+    id: String(invoice.id),
+    number: String(invoice.number || invoice.id),
+    customer: String(invoice.customer || 'Customer'),
+    total: Number(invoice.total || 0),
+    outstanding: Number(invoice.outstanding || 0),
+    dueDate: invoice.dueDate || '',
+    status: invoice.status === 'paid' ? 'paid' : 'unpaid',
+    viewUrl: invoice.viewUrl || '',
+  })) : [];
+
+  state.transactions = Array.isArray(payload.transactions) ? payload.transactions.map((transaction) => ({
+    id: String(transaction.id),
+    accountId: String(transaction.accountId || ''),
+    bookingDate: transaction.bookingDate || '',
+    description: String(transaction.description || ''),
+    merchant: String(transaction.merchant || transaction.description || 'Bank transaction'),
+    direction: transaction.direction === 'debit' ? 'debit' : 'credit',
+    amount: Number(transaction.amount || 0),
+    currency: transaction.currency || payload.company?.currency || 'GBP',
+    status: transaction.status || 'needs_review',
+    backendSuggestion: transaction.suggestion || null,
+    source: 'cherry-money-production',
+  })) : [];
+
+  state.approvals = Array.isArray(payload.approvals) ? payload.approvals : [];
+  state.paymentDrafts = Array.isArray(payload.paymentDrafts) ? payload.paymentDrafts : [];
+  state.toolActivity = [];
+  state.activity = [{
+    id: `event_live_${Date.now()}`,
+    at: new Date().toISOString(),
+    actor: 'Cherry',
+    kind: 'system',
+    message: `Authenticated production workspace loaded for ${payload.company?.name || 'Cherry Money'}.`,
+  }];
+  notify();
+  return state;
+}
+
 export function exportAuditSnapshot() {
   return clone({
     exportedAt: new Date().toISOString(),
-    environment: 'representative sandbox',
+    environment: state.source === 'cherry-money-production' ? 'authenticated Cherry Money production' : 'representative sandbox',
     approvals: state.approvals,
     paymentDrafts: state.paymentDrafts,
     toolActivity: state.toolActivity,

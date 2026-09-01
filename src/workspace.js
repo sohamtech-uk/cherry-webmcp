@@ -1,6 +1,7 @@
 import { ui, runtime } from './context.js';
 import { state, getInvoice, getTransaction } from './store.js';
 import { escapeHtml, formatTime, icon, money, renderLogo } from './ui.js';
+import { renderLiveModeBanner } from './live-ui.js';
 
 function renderAgentMessages() {
   return ui.messages.map((message) => `
@@ -26,10 +27,11 @@ function renderAgentConsole() {
       </div>
       <div class="prompt-row">
         <button data-command="review">Review transactions</button>
-        <button data-command="prepare">Prepare txn_001</button>
+        <button data-command="prepare">${runtime.live.connected ? 'Prepare best match' : 'Prepare txn_001'}</button>
         <button data-command="exceptions">Explain exceptions</button>
         <button data-command="payment">Draft HMRC payment</button>
       </div>
+      ${renderLiveModeBanner()}
       <div class="chat-window" id="chat-window">
         ${renderAgentMessages()}
         ${ui.agentBusy ? `<article class="chat-message agent"><div class="chat-avatar">${renderLogo()}</div><div class="chat-bubble typing"><i></i><i></i><i></i><span>Calling scoped finance tools…</span></div></article>` : ''}
@@ -40,7 +42,7 @@ function renderAgentConsole() {
         <button type="submit" aria-label="Send prompt">${icon('arrow', 18)}</button>
       </form>
       <div class="console-foot">
-        <span><i class="status-light ${runtime.webMcpStatus.supported === true ? 'on' : ''}"></i>${runtime.webMcpStatus.supported === true ? 'Native WebMCP active' : 'Guided fallback uses the identical application functions'}</span>
+        <span><i class="status-light ${runtime.webMcpStatus.supported === true ? 'on' : ''}"></i>${runtime.live.connected ? (runtime.live.openaiProvider === 'openai' ? `OpenAI response verified · ${runtime.live.model || 'configured model'}` : runtime.live.openaiConfigured ? `Cherry Money production connected · OpenAI configured` : 'Cherry Money production connected · OpenAI unavailable') : runtime.webMcpStatus.supported === true ? 'Native WebMCP active' : 'Guided fallback uses the identical application functions'}</span>
         <button data-action="show-tools">View tool contracts ${icon('arrow', 14)}</button>
       </div>
     </section>`;
@@ -78,7 +80,7 @@ function renderApprovalQueue() {
           <div class="approval-item">
             <div class="approval-top"><span class="approval-icon">${icon('invoice', 19)}</span><div><strong>${escapeHtml(transaction?.merchant)} → ${escapeHtml(invoice?.number)}</strong><small>${escapeHtml(approval.transactionId)} · staged ${formatTime(approval.createdAt)}</small></div><b>${money(approval.amount)}</b></div>
             <div class="approval-reason">${icon('agent', 15)} Prepared by WebMCP agent. No ledger state has changed yet.</div>
-            <button class="button primary full" data-approve="${escapeHtml(approval.id)}">${icon('shield', 17)} Approve reconciliation</button>
+            <button class="button primary full" data-approve="${escapeHtml(approval.id)}" ${runtime.live.connected && !runtime.live.capabilities?.humanApproveReconciliation ? 'disabled title="Your Cherry Money role cannot approve reconciliations"' : ''}>${icon('shield', 17)} Approve reconciliation</button>
             <small class="approval-note">This button has no corresponding agent tool.</small>
           </div>`;
       }).join('') : `
