@@ -94,7 +94,7 @@ function renderApprovalQueue() {
 function renderPaymentSafety() {
   const draft = state.paymentDrafts[0];
   return `
-    <article class="panel payment-panel" id="payments">
+    <article class="panel payment-panel" id="payment-safety">
       <div class="panel-header compact">
         <div><span class="eyebrow">Money movement</span><h2>${icon('card', 20)} Payment safety</h2></div>
         <span class="draft-pill">Draft only</span>
