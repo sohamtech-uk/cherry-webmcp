@@ -14,6 +14,7 @@ export const state = {
     { id: 'inv_1048', number: 'INV-1048', customer: 'Northstar Studio Ltd', total: 680.00, outstanding: 680.00, dueDate: isoDay(-1), status: 'unpaid' },
     { id: 'inv_1049', number: 'INV-1049', customer: 'Acorn Consulting', total: 1250.00, outstanding: 1250.00, dueDate: isoDay(2), status: 'unpaid' },
     { id: 'inv_1050', number: 'INV-1050', customer: 'Green & Co', total: 245.50, outstanding: 245.50, dueDate: isoDay(-3), status: 'unpaid' },
+    { id: 'inv_1051', number: 'INV-1051', customer: 'Bluefield Design', total: 680.00, outstanding: 680.00, dueDate: isoDay(5), status: 'unpaid' },
     { id: 'inv_1044', number: 'INV-1044', customer: 'River Lane CIC', total: 910.00, outstanding: 0, dueDate: isoDay(-8), status: 'paid' },
   ],
   transactions: [
