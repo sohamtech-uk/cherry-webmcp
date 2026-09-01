@@ -6,7 +6,7 @@ on:
   pull_request:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test-and-build:
@@ -36,3 +36,18 @@ jobs:
           path: dist
           if-no-files-found: error
           retention-days: 7
+
+      - name: Publish verified bundle for production delivery
+        if: github.event_name == 'push'
+        run: |
+          mkdir -p /tmp/cherry-webmcp-dist
+          cp -R dist/. /tmp/cherry-webmcp-dist/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout --orphan vercel-dist
+          git rm -rf .
+          cp -R /tmp/cherry-webmcp-dist/. .
+          touch .nojekyll
+          git add .
+          git commit -m "deploy: verified bundle from ${GITHUB_SHA}"
+          git push --force origin HEAD:vercel-dist
