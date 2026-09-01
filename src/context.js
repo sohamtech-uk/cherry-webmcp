@@ -17,11 +17,16 @@ export const INITIAL_MESSAGE = {
 };
 
 export const ui = {
+  activeSection: 'overview',
   filter: 'all',
   search: '',
+  invoiceFilter: 'all',
+  invoiceSearch: '',
   selectedTransactionId: null,
+  selectedInvoiceId: null,
   showToolRegistry: false,
   mobileNavOpen: false,
   agentBusy: false,
+  bankSyncAt: new Date().toISOString(),
   messages: [INITIAL_MESSAGE],
 };
