@@ -16,10 +16,10 @@ export function renderSidebar() {
     ['reports', 'chart', 'Reports'],
   ];
 
-  const item = ([target, iconName, label], muted = false) => `
-    <button class="nav-item ${muted ? 'muted' : ''}" data-scroll="${target}">
+  const item = ([target, iconName, label], product = false) => `
+    <button class="nav-item ${ui.activeSection === target ? 'active' : ''}" data-scroll="${target}" ${ui.activeSection === target ? 'aria-current="page"' : ''}>
       ${icon(iconName, 18)}<span>${label}</span>
-      ${muted ? '<span class="soon">Product</span>' : ''}
+      ${product ? '<span class="nav-live">Live</span>' : ''}
     </button>`;
 
   return `
@@ -63,12 +63,24 @@ export function renderTopbar() {
     : runtime.webMcpStatus.supported === false
       ? 'Guided demo available'
       : 'Checking WebMCP';
+  const sectionLabels = {
+    overview: 'Agent workspace',
+    transactions: 'Bank transactions',
+    approvals: 'Approval queue',
+    tools: 'WebMCP tools',
+    audit: 'Audit trail',
+    invoices: 'Invoices',
+    payments: 'Payments',
+    connections: 'Bank connections',
+    reports: 'Reports',
+  };
+  const currentLabel = sectionLabels[ui.activeSection] || 'Agent workspace';
 
   return `
     <header class="topbar">
       <div class="topbar-left">
         <button class="icon-button menu-button" data-action="toggle-nav" aria-label="Open navigation">${icon('menu', 20)}</button>
-        <div class="breadcrumb"><span>Cherry Money</span>${icon('chevron', 14)}<strong>Agent workspace</strong></div>
+        <div class="breadcrumb"><span>Cherry Money</span>${icon('chevron', 14)}<strong>${escapeHtml(currentLabel)}</strong></div>
       </div>
       <div class="topbar-actions">
         <button class="webmcp-status ${statusClass}" data-action="show-tools" title="${escapeHtml(runtime.webMcpStatus.message)}">
