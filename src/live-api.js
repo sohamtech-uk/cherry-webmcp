@@ -1,6 +1,8 @@
 const DEFAULT_API_BASE = 'https://cherrymoney.co.uk/api';
 const TOKEN_KEY = 'cherry-webmcp-live-token';
 const PROFILE_KEY = 'cherry-webmcp-live-profile';
+const GOOGLE_CODE_KEY = 'google-auth';
+const GOOGLE_ERROR_KEY = 'google-error';
 const ALLOWED_API_ORIGINS = new Set([
   'https://cherrymoney.co.uk',
   'https://www.cherrymoney.co.uk',
@@ -18,6 +20,8 @@ function normaliseApiBase(value) {
 export const LIVE_API_BASE = normaliseApiBase(
   import.meta.env.VITE_CHERRY_API_BASE_URL || DEFAULT_API_BASE,
 );
+
+const LIVE_APP_ORIGIN = new URL(LIVE_API_BASE).origin;
 
 export function getLiveToken() {
   try {
@@ -46,6 +50,22 @@ export function clearLiveSession() {
   } catch {
     // Embedded/private browser contexts may disable storage.
   }
+}
+
+function saveLiveSession(payload) {
+  if (!payload?.token) {
+    throw new Error(payload?.error || 'Cherry Money did not return an authenticated session token.');
+  }
+
+  try {
+    sessionStorage.setItem(TOKEN_KEY, payload.token);
+    sessionStorage.setItem(PROFILE_KEY, JSON.stringify(payload.user || null));
+  } catch {
+    clearLiveSession();
+    throw new Error('This browser does not allow tab-scoped session storage, so a secure live session cannot be retained.');
+  }
+
+  return payload;
 }
 
 async function request(path, options = {}) {
@@ -96,19 +116,58 @@ export async function loginToCherryMoney(email, password) {
     body: { email, password },
   });
 
-  if (!payload?.token) {
-    throw new Error(payload?.error || 'Cherry Money did not return an authenticated session token.');
-  }
+  return saveLiveSession(payload);
+}
+
+export function getGoogleLoginUrl() {
+  const redirect = new URL('/webmcp/google/redirect', LIVE_APP_ORIGIN);
+  redirect.searchParams.set('return_origin', window.location.origin);
+  return redirect.toString();
+}
+
+export async function exchangeGoogleLoginCode(code) {
+  const payload = await request('/webmcp/google/exchange', {
+    method: 'POST',
+    body: { code },
+  });
+
+  return saveLiveSession(payload);
+}
+
+export function getGoogleRedirectError() {
+  if (typeof window === 'undefined' || !window.location.hash) return '';
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  return params.get(GOOGLE_ERROR_KEY) || '';
+}
+
+async function consumeGoogleRedirect() {
+  if (typeof window === 'undefined' || !window.location.hash) return;
+
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const code = params.get(GOOGLE_CODE_KEY);
+  if (!code) return;
+
+  // Remove the one-time value from browser history immediately. It is already
+  // absent from HTTP logs because the backend returned it in a URL fragment.
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
 
   try {
-    sessionStorage.setItem(TOKEN_KEY, payload.token);
-    sessionStorage.setItem(PROFILE_KEY, JSON.stringify(payload.user || null));
-  } catch {
+    await exchangeGoogleLoginCode(code);
+    window.location.replace(`${window.location.pathname}${window.location.search}#tools`);
+  } catch (error) {
     clearLiveSession();
-    throw new Error('This browser does not allow tab-scoped session storage, so a secure live session cannot be retained.');
+    window.location.replace(
+      `${window.location.pathname}${window.location.search}#${GOOGLE_ERROR_KEY}=${encodeURIComponent(error.message)}`,
+    );
   }
+}
 
-  return payload;
+if (typeof window !== 'undefined') {
+  queueMicrotask(() => {
+    consumeGoogleRedirect().catch(() => {
+      clearLiveSession();
+    });
+  });
 }
 
 export async function logoutLiveSession() {
