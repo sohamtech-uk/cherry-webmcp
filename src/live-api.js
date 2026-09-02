@@ -146,7 +146,8 @@ export function stageLiveReconciliation(transactionId, invoiceId) {
 export function approveLiveReconciliation(proposalId) {
   return request(`/webmcp/reconciliation/${encodeURIComponent(proposalId)}/approve`, {
     method: 'POST',
-    body: { confirmed_by_human: true },
+    headers: { 'X-Cherry-Human-Approval': 'confirmed' },
+    body: { confirmation: true },
   });
 }
 
