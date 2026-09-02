@@ -1,9 +1,9 @@
-const DEFAULT_API_BASE = 'https://cherrybank.money/api';
+const DEFAULT_API_BASE = 'https://cherrymoney.co.uk/api';
 const TOKEN_KEY = 'cherry-webmcp-live-token';
 const PROFILE_KEY = 'cherry-webmcp-live-profile';
 const ALLOWED_API_ORIGINS = new Set([
-  'https://cherrybank.money',
-  'https://www.cherrybank.money',
+  'https://cherrymoney.co.uk',
+  'https://www.cherrymoney.co.uk',
   'http://localhost:8000',
 ]);
 
