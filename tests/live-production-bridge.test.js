@@ -50,10 +50,20 @@ test('WebMCP live mode uses production read, suggestion, stage and draft endpoin
   assert.doesNotMatch(webmcp, /name:\s*['"]cherry_execute_payment/);
 });
 
-test('Vercel policy permits only the private Cherry API origins in addition to self', () => {
+test('production bridge uses cherrymoney.co.uk and contains no legacy API-domain reference', () => {
+  const api = read('src/live-api.js');
+  const liveUi = read('src/live-ui.js');
   const vercel = read('vercel.json');
+  const documentation = read('docs/live-production-bridge.md');
+  const productionBridgeSurface = [api, liveUi, vercel, documentation].join('\n');
 
-  assert.match(vercel, /connect-src 'self' https:\/\/cherrybank\.money https:\/\/www\.cherrybank\.money;/);
+  assert.match(api, /const DEFAULT_API_BASE = 'https:\/\/cherrymoney\.co\.uk\/api'/);
+  assert.match(api, /'https:\/\/cherrymoney\.co\.uk'/);
+  assert.match(api, /'https:\/\/www\.cherrymoney\.co\.uk'/);
+  assert.match(liveUi, /judge-demo@cherrymoney\.co\.uk/);
+  assert.match(vercel, /connect-src 'self' https:\/\/cherrymoney\.co\.uk https:\/\/www\.cherrymoney\.co\.uk;/);
+  assert.match(documentation, /https:\/\/cherrymoney\.co\.uk\/api\/login/);
+  assert.doesNotMatch(productionBridgeSurface, /cherrybank\.money/i);
 });
 
 test('live command routing is non-recursive and does not duplicate the current prompt in history', () => {
