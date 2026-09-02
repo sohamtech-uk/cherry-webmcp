@@ -31,7 +31,9 @@ test('production finance state is explicitly blocked from localStorage', () => {
 test('human approval and disconnect contracts call the private backend safely', () => {
   const api = read('src/live-api.js');
 
-  assert.match(api, /confirmed_by_human: true/);
+  assert.match(api, /'X-Cherry-Human-Approval': 'confirmed'/);
+  assert.match(api, /body: \{ confirmation: true \}/);
+  assert.doesNotMatch(api, /confirmed_by_human: true/);
   assert.match(api, /request\('\/logout', \{ method: 'GET' \}\)/);
   assert.match(api, /credentials: 'omit'/);
   assert.match(api, /cache: 'no-store'/);
@@ -68,4 +70,3 @@ test('live command routing is non-recursive and does not duplicate the current p
   assert.match(liveCommand, /askLiveCherry\(promptText, history\)/);
   assert.match(dispatcher, /if \(runtime\.live\.connected\)[\s\S]*await runLiveCommand\(command, promptText\)/);
 });
-
