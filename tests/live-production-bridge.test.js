@@ -39,6 +39,21 @@ test('human approval and disconnect contracts call the private backend safely', 
   assert.match(api, /cache: 'no-store'/);
 });
 
+test('Google sign-in uses the Cherry Money OAuth bridge and a one-time code exchange', () => {
+  const api = read('src/live-api.js');
+  const liveUi = read('src/live-ui.js');
+  const allBrowserSource = `${api}\n${liveUi}`;
+
+  assert.match(api, /new URL\('\/webmcp\/google\/redirect', LIVE_APP_ORIGIN\)/);
+  assert.match(api, /return_origin/);
+  assert.match(api, /request\('\/webmcp\/google\/exchange'/);
+  assert.match(api, /GOOGLE_CODE_KEY = 'google-auth'/);
+  assert.match(api, /window\.history\.replaceState/);
+  assert.match(liveUi, /Continue with Google/);
+  assert.match(liveUi, /short-lived, single-use code/);
+  assert.doesNotMatch(allBrowserSource, /GOOGLE_CLIENT_SECRET|accounts\.google\.com\/gsi/);
+});
+
 test('WebMCP live mode uses production read, suggestion, stage and draft endpoints without an approval tool', () => {
   const webmcp = read('src/webmcp.js');
 
@@ -60,7 +75,7 @@ test('production bridge uses cherrymoney.co.uk and contains no legacy API-domain
   assert.match(api, /const DEFAULT_API_BASE = 'https:\/\/cherrymoney\.co\.uk\/api'/);
   assert.match(api, /'https:\/\/cherrymoney\.co\.uk'/);
   assert.match(api, /'https:\/\/www\.cherrymoney\.co\.uk'/);
-  assert.match(liveUi, /judge-demo@cherrymoney\.co\.uk/);
+  assert.match(liveUi, /you@cherrymoney\.co\.uk/);
   assert.match(vercel, /connect-src 'self' https:\/\/cherrymoney\.co\.uk https:\/\/www\.cherrymoney\.co\.uk;/);
   assert.match(documentation, /https:\/\/cherrymoney\.co\.uk\/api\/login/);
   assert.doesNotMatch(productionBridgeSurface, /cherrybank\.money/i);
