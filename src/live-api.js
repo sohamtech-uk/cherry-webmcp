@@ -140,6 +140,20 @@ export function getGoogleRedirectError() {
   return params.get(GOOGLE_ERROR_KEY) || '';
 }
 
+function reloadWithHash(hash) {
+  window.history.replaceState(
+    null,
+    '',
+    `${window.location.pathname}${window.location.search}#${hash}`,
+  );
+
+  // A fragment-only location change does not reload the document. Reload
+  // explicitly so main.js sees the new tab-scoped token and bootstraps the
+  // authenticated production workspace. The same reload also makes callback
+  // errors visible immediately instead of leaving the modal silently stale.
+  window.location.reload();
+}
+
 async function consumeGoogleRedirect() {
   if (typeof window === 'undefined' || !window.location.hash) return;
 
@@ -153,12 +167,10 @@ async function consumeGoogleRedirect() {
 
   try {
     await exchangeGoogleLoginCode(code);
-    window.location.replace(`${window.location.pathname}${window.location.search}#tools`);
+    reloadWithHash('tools');
   } catch (error) {
     clearLiveSession();
-    window.location.replace(
-      `${window.location.pathname}${window.location.search}#${GOOGLE_ERROR_KEY}=${encodeURIComponent(error.message)}`,
-    );
+    reloadWithHash(`${GOOGLE_ERROR_KEY}=${encodeURIComponent(error.message)}`);
   }
 }
 

@@ -54,6 +54,16 @@ test('Google sign-in uses the Cherry Money OAuth bridge and a one-time code exch
   assert.doesNotMatch(allBrowserSource, /GOOGLE_CLIENT_SECRET|accounts\.google\.com\/gsi/);
 });
 
+test('Google callback reloads after success or failure so the UI consumes the result', () => {
+  const api = read('src/live-api.js');
+
+  assert.match(api, /function reloadWithHash\(hash\)/);
+  assert.match(api, /window\.location\.reload\(\)/);
+  assert.ok(api.includes("reloadWithHash('tools');"));
+  assert.ok(api.includes('reloadWithHash(`${GOOGLE_ERROR_KEY}=${encodeURIComponent(error.message)}`);'));
+  assert.doesNotMatch(api, /window\.location\.replace\(/);
+});
+
 test('WebMCP live mode uses production read, suggestion, stage and draft endpoints without an approval tool', () => {
   const webmcp = read('src/webmcp.js');
 
