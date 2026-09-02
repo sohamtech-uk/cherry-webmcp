@@ -1,8 +1,18 @@
 import { runtime, ui } from './context.js';
 import { escapeHtml, icon } from './ui.js';
-import { LIVE_API_BASE } from './live-api.js';
+import { getGoogleLoginUrl, getGoogleRedirectError, LIVE_API_BASE } from './live-api.js';
+
+function applyGoogleRedirectError() {
+  const error = getGoogleRedirectError();
+  if (!error || runtime.live.connected) return;
+
+  runtime.live.error = error;
+  ui.showLiveLogin = true;
+  window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}`);
+}
 
 export function renderLiveConnectionModal() {
+  applyGoogleRedirectError();
   if (!ui.showLiveLogin) return '';
 
   return `
@@ -12,19 +22,28 @@ export function renderLiveConnectionModal() {
         <div>
           <span class="eyebrow">Authenticated production connection</span>
           <h2 id="live-login-title">Connect this tab to Cherry Money</h2>
-          <p>Your password is sent directly to the private Cherry Money API over HTTPS and is never stored. The Sanctum token remains only in this browser tab.</p>
+          <p>Use your existing Cherry Money account. Google sign-in returns a short-lived, single-use code; no Google or Cherry Money password is stored by this site.</p>
         </div>
         <button class="icon-button" data-action="close-live-login" aria-label="Close">${icon('close', 20)}</button>
       </div>
-      <form class="live-login-form" id="live-login-form">
-        <label><span>Email</span><input name="email" type="email" autocomplete="username" required maxlength="255" placeholder="judge-demo@cherrymoney.co.uk" /></label>
-        <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required minlength="6" placeholder="Cherry Money password" /></label>
-        ${runtime.live.error ? `<div class="live-login-error">${icon('alert', 17)}${escapeHtml(runtime.live.error)}</div>` : ''}
-        <button class="button primary full" type="submit" ${runtime.live.loading ? 'disabled' : ''}>${icon('link', 18)} ${runtime.live.loading ? 'Connecting…' : 'Connect securely'}</button>
-      </form>
+      <div class="live-login-form">
+        <a class="google-login-button" href="${escapeHtml(getGoogleLoginUrl())}">
+          <span class="google-mark" aria-hidden="true">G</span>
+          <span>Continue with Google</span>
+        </a>
+
+        <div class="login-divider"><span>or use email and password</span></div>
+
+        <form id="live-login-form">
+          <label><span>Email</span><input name="email" type="email" autocomplete="username" required maxlength="255" placeholder="you@cherrymoney.co.uk" /></label>
+          <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required minlength="6" placeholder="Cherry Money password" /></label>
+          ${runtime.live.error ? `<div class="live-login-error">${icon('alert', 17)}${escapeHtml(runtime.live.error)}</div>` : ''}
+          <button class="button primary full" type="submit" ${runtime.live.loading ? 'disabled' : ''}>${icon('link', 18)} ${runtime.live.loading ? 'Connecting…' : 'Connect securely'}</button>
+        </form>
+      </div>
       <div class="live-login-foot">
-        <span>${icon('shield', 16)} Use the dedicated judge/demo company. Do not connect an organisation containing real customer or bank data for public judging.</span>
-        <span>${icon('lock', 16)} Production finance data stays in memory for this tab and is never written to localStorage.</span>
+        <span>${icon('shield', 16)} Google sign-in only connects an existing Cherry Money business user. It does not create a hidden production company.</span>
+        <span>${icon('lock', 16)} The resulting Sanctum token stays in this browser tab. Production finance data is never written to localStorage.</span>
         <code>${escapeHtml(LIVE_API_BASE)}</code>
       </div>
     </section>`;
