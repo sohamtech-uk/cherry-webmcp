@@ -6,7 +6,15 @@ import {
   stageReconciliation,
   createPaymentDraft,
   logToolInvocation,
+  hydrateLiveState,
 } from './store.js';
+import { runtime } from './context.js';
+import {
+  liveBootstrap,
+  suggestLiveReconciliation,
+  stageLiveReconciliation,
+  createLivePaymentDraft,
+} from './live-api.js';
 
 export const TOOL_CATALOG = [
   {
@@ -71,6 +79,19 @@ function toolResult(data, summary = 'Cherry Money tool completed.') {
   };
 }
 
+const liveMode = () => runtime.live.connected;
+
+async function refreshLiveWorkspace() {
+  const payload = await liveBootstrap();
+  hydrateLiveState(payload);
+  runtime.live.company = payload.company || runtime.live.company;
+  runtime.live.user = payload.user || runtime.live.user;
+  runtime.live.model = payload.openai?.model || runtime.live.model;
+  runtime.live.openaiConfigured = Boolean(payload.openai?.configured);
+  runtime.live.capabilities = payload.capabilities || runtime.live.capabilities || {};
+  return payload;
+}
+
 function safeLimit(value, fallback = 25) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
@@ -90,8 +111,9 @@ export function buildToolDefinitions({ onChange = () => {} } = {}) {
       annotations: { readOnlyHint: true },
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       execute: async (input = {}) => {
-        const accounts = state.accounts.map(({ id, name, sortCodeMasked, currency, balance, available, provider }) => ({
-          id, name, sortCodeMasked, currency, balance, available, provider,
+        if (liveMode()) await refreshLiveWorkspace();
+        const accounts = state.accounts.map(({ id, name, sortCodeMasked, currency, balance, available, provider, status, lastSyncedAt }) => ({
+          id, name, sortCodeMasked, currency, balance, available, provider, status, lastSyncedAt,
         }));
         record('cherry_get_accounts', input, `Returned ${accounts.length} bank accounts.`);
         return toolResult(accounts, `Returned ${accounts.length} bank accounts visible in Cherry Money.`);
@@ -115,6 +137,7 @@ export function buildToolDefinitions({ onChange = () => {} } = {}) {
         additionalProperties: false,
       },
       execute: async ({ status = 'all', limit = 25 } = {}) => {
+        if (liveMode()) await refreshLiveWorkspace();
         let transactions = [...state.transactions];
         if (status === 'review') {
           transactions = transactions.filter((item) => ['needs_review', 'pending_approval'].includes(item.status));
@@ -141,6 +164,7 @@ export function buildToolDefinitions({ onChange = () => {} } = {}) {
         additionalProperties: false,
       },
       execute: async ({ query = '', amount, status = 'all' } = {}) => {
+        if (liveMode()) await refreshLiveWorkspace();
         const needle = String(query).trim().toLowerCase();
         const invoices = state.invoices.filter((invoice) => {
           const textMatch = !needle || `${invoice.number} ${invoice.customer}`.toLowerCase().includes(needle);
@@ -160,13 +184,15 @@ export function buildToolDefinitions({ onChange = () => {} } = {}) {
       inputSchema: {
         type: 'object',
         properties: {
-          transaction_id: { type: 'string', pattern: '^txn_[0-9]{3}$', description: 'Cherry transaction ID, for example txn_001.' },
+          transaction_id: { type: 'string', maxLength: 191, description: 'Cherry transaction ID, for example txn_001.' },
         },
         required: ['transaction_id'],
         additionalProperties: false,
       },
       execute: async ({ transaction_id }) => {
-        const suggestion = suggestMatch(transaction_id);
+        const suggestion = liveMode()
+          ? (await suggestLiveReconciliation(transaction_id)).suggestion
+          : suggestMatch(transaction_id);
         record('cherry_suggest_reconciliation', { transaction_id }, `${suggestion.confidence}% confidence; ready=${suggestion.ready}.`);
         return toolResult(
           suggestion,
@@ -184,22 +210,29 @@ export function buildToolDefinitions({ onChange = () => {} } = {}) {
       inputSchema: {
         type: 'object',
         properties: {
-          transaction_id: { type: 'string', pattern: '^txn_[0-9]{3}$', description: 'Bank transaction ID to stage.' },
-          invoice_id: { type: 'string', pattern: '^inv_[0-9]{4}$', description: 'Invoice ID to stage as the proposed match.' },
+          transaction_id: { type: 'string', maxLength: 191, description: 'Bank transaction ID to stage.' },
+          invoice_id: { type: 'string', maxLength: 191, description: 'Invoice ID to stage as the proposed match.' },
         },
         required: ['transaction_id', 'invoice_id'],
         additionalProperties: false,
       },
       execute: async ({ transaction_id, invoice_id }) => {
-        const transaction = getTransaction(transaction_id);
-        if (!transaction) throw new Error('Bank transaction not found.');
-        const approval = stageReconciliation(transaction_id, invoice_id);
+        let approval;
+        if (liveMode()) {
+          const result = await stageLiveReconciliation(transaction_id, invoice_id);
+          approval = result.approval;
+          await refreshLiveWorkspace();
+        } else {
+          const transaction = getTransaction(transaction_id);
+          if (!transaction) throw new Error('Bank transaction not found.');
+          approval = stageReconciliation(transaction_id, invoice_id);
+        }
         record('cherry_stage_reconciliation', { transaction_id, invoice_id }, 'Reconciliation staged; human approval required.');
         onChange();
         return toolResult(
           {
             approval,
-            transactionStatus: getTransaction(transaction_id).status,
+            transactionStatus: getTransaction(transaction_id)?.status || 'pending_approval',
             requiresHumanApproval: true,
             reconciliationCompleted: false,
             nextStep: 'Ask the user to review the visible approval queue and press Approve reconciliation themselves.',
@@ -215,6 +248,7 @@ export function buildToolDefinitions({ onChange = () => {} } = {}) {
       annotations: { readOnlyHint: true },
       inputSchema: { type: 'object', properties: {}, additionalProperties: false },
       execute: async (input = {}) => {
+        if (liveMode()) await refreshLiveWorkspace();
         const analysis = getReviewAnalysis();
         const payload = {
           exceptions: analysis.exceptions,
@@ -244,7 +278,10 @@ export function buildToolDefinitions({ onChange = () => {} } = {}) {
         additionalProperties: false,
       },
       execute: async (input) => {
-        const draft = createPaymentDraft(input);
+        const draft = liveMode()
+          ? (await createLivePaymentDraft(input)).draft
+          : createPaymentDraft(input);
+        if (liveMode()) await refreshLiveWorkspace();
         record('cherry_create_payment_draft', input, 'Payment draft created; no money moved.');
         onChange();
         return toolResult(

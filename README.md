@@ -121,3 +121,9 @@ See [`docs/CHALLENGE.md`](docs/CHALLENGE.md) for the demo flow, architecture and
 ## Licence
 
 MIT — see [LICENSE](LICENSE).
+
+## Authenticated Cherry Money production mode
+
+A review branch adds an explicit **Connect Cherry Money** mode that hydrates this interface from the private, company-scoped Cherry Money API and routes Ask Cherry through the backend's server-side OpenAI integration. The representative sandbox remains the default, the bearer token is tab-scoped, production records are never written to localStorage, and no payment-execution or agent-approval capability is exposed.
+
+See [`docs/live-production-bridge.md`](docs/live-production-bridge.md) for the rollout and verification gates. Do not describe the public deployment as production-connected or OpenAI-verified until the private backend is deployed and a live verifier passes.
