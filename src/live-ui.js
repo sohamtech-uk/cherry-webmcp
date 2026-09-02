@@ -17,7 +17,7 @@ export function renderLiveConnectionModal() {
         <button class="icon-button" data-action="close-live-login" aria-label="Close">${icon('close', 20)}</button>
       </div>
       <form class="live-login-form" id="live-login-form">
-        <label><span>Email</span><input name="email" type="email" autocomplete="username" required maxlength="255" placeholder="judge-demo@cherrybank.money" /></label>
+        <label><span>Email</span><input name="email" type="email" autocomplete="username" required maxlength="255" placeholder="judge-demo@cherrymoney.co.uk" /></label>
         <label><span>Password</span><input name="password" type="password" autocomplete="current-password" required minlength="6" placeholder="Cherry Money password" /></label>
         ${runtime.live.error ? `<div class="live-login-error">${icon('alert', 17)}${escapeHtml(runtime.live.error)}</div>` : ''}
         <button class="button primary full" type="submit" ${runtime.live.loading ? 'disabled' : ''}>${icon('link', 18)} ${runtime.live.loading ? 'Connecting…' : 'Connect securely'}</button>
